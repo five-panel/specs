@@ -70,6 +70,7 @@ Before dropping `metabase_app_db` in production, operators should stop or remove
 - Run the frontend test suite or focused frontend tests covering view management, user view filtering, and dispatcher/navigation behavior.
 - Run a frontend build or typecheck to confirm removing `metabase-dashboard` from `ViewType` does not leave TypeScript references behind.
 - Run `docker compose config --quiet` to validate local Compose after removing the service.
+- Run `docker compose -f docker-compose.prod.yml config --quiet` with required production environment values to validate production Compose after removing the service.
 
 ## Risks
 
