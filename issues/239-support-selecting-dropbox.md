@@ -30,14 +30,14 @@ process the same enabled configurations today.
 
 ## Desired Behavior
 
-Dropbox scheduled jobs can be associated with zero, one, or many Dropbox integration
-configurations.
+Dropbox scheduled jobs can run all enabled Dropbox configurations or can be
+associated with one or many explicit Dropbox integration configurations.
 
-The canonical params shape is:
+The accepted params shape is:
 
 ```ts
 {
-  integrationConfigIds?: string[]
+  integrationConfigIds?: string[] | null
 }
 ```
 
@@ -46,14 +46,26 @@ job tenant. There are no grouping restrictions: configs that point to the same
 Dropbox file may be selected in one job, split across different jobs, selected by
 more than one job, or left out of a job.
 
-If `integrationConfigIds` is missing, `null`, or an empty array, the job keeps the
-legacy behavior and runs all enabled Dropbox configurations for the tenant. This
-preserves existing Dropbox jobs that have `{}` params.
+If `integrationConfigIds` is missing or `null`, the job keeps the legacy behavior
+and runs all enabled Dropbox configurations for the tenant. This preserves existing
+Dropbox jobs that have `{}` params. An empty `integrationConfigIds` array is not a
+valid saved selection and must not be treated as "all configs".
 
 When `integrationConfigIds` is present and non-empty, a Dropbox job only syncs the
 selected configs and only imports files queued or requeued by that same job
 execution. It must not import old pending Dropbox files or pending files produced by
 another scheduled job execution.
+
+Each scheduled Dropbox execution should use this flow:
+
+1. Read the job params and resolve the config selection.
+2. Load the selected tenant-owned Dropbox integration configs, or all enabled
+   Dropbox configs for legacy all-config jobs.
+3. Download the Dropbox files needed by those configs.
+4. Convert each selected config's sheet into one CSV import file.
+5. Create a new pending `files` row for each CSV import file, tagged with the
+   current `scheduledJobId`, `jobExecutionId`, and `integrationConfigId`.
+6. Import only the pending `files` rows tagged with the current `jobExecutionId`.
 
 Legacy singular params from the earlier scheduling migration should be accepted at
 execution time when the new array is absent:
@@ -74,13 +86,19 @@ New writes should use only `integrationConfigIds`.
   supplied by the client.
 - Require selected configs to exist, belong to the tenant, have `type === 'dropbox'`,
   and be enabled.
+- Reject empty explicit `integrationConfigIds` arrays for create and update. The UI
+  must use missing or `null` params for the all-config mode, and require at least one
+  config for the selected-config mode.
 - Update the Dropbox job to pass its selected configs into Dropbox sync.
 - Update Dropbox sync so it can run either all enabled configs or an explicit selected
   config list.
 - Preserve the current optimization that downloads a Dropbox source at most once
   inside a single execution when multiple selected configs reference the same source.
-- Add job/execution metadata to files created or requeued by scheduled Dropbox runs
-  so import can select exactly that execution's files.
+- Add job/execution metadata to new per-execution pending `files` rows created or
+  requeued by scheduled Dropbox runs so import can select exactly that execution's
+  files.
+- Do not update an existing original or shared `files` row in place to claim ownership
+  for a scheduled job execution.
 - Update import filtering so scheduled Dropbox jobs import only files queued or
   requeued by the same execution.
 - Keep provider-level manual actions, such as "sync", "import", and "sync and
@@ -115,19 +133,27 @@ New writes should use only `integrationConfigIds`.
   created or requeued by another scheduled job execution.
 - Running one Dropbox scheduled job does not import pre-existing pending Dropbox
   files that are not tagged for that execution.
-- A Dropbox scheduled job with `{}` params, missing `integrationConfigIds`, or an
-  empty `integrationConfigIds` array continues to run all enabled Dropbox configs for
-  the tenant.
+- A Dropbox scheduled job with `{}` params, missing `integrationConfigIds`, or
+  `integrationConfigIds: null` continues to run all enabled Dropbox configs for the
+  tenant.
 - A Dropbox scheduled job with legacy `{ integration_config_id: "<id>" }` params runs
   that one config when `integrationConfigIds` is absent.
-- The API rejects Dropbox job params when `integrationConfigIds` is not an array of
-  strings.
+- The API rejects Dropbox job params when `integrationConfigIds` is not `null` and is
+  not an array of strings.
+- The API rejects `integrationConfigIds: []` for Dropbox scheduled-job create and
+  update requests.
 - The API rejects selected config IDs that do not exist, belong to another tenant,
   are disabled, or are not Dropbox configs.
 - Configs that reference the same Dropbox source can be selected in different jobs
   without validation errors.
 - The same Dropbox config can be selected by more than one job without validation
   errors.
+- Each scheduled Dropbox execution creates pending `files` rows tagged with that
+  execution's `jobExecutionId`; it does not retag an existing original or shared file
+  row to point at the current execution.
+- If two scheduled Dropbox executions select the same config or Dropbox source, each
+  execution can import its own pending file rows without one execution overwriting or
+  hiding the other execution's queued work.
 - Within one job execution, a Dropbox source is downloaded at most once even when
   multiple selected configs reference it.
 - Job execution result summaries include selected config IDs, processed config IDs,
@@ -141,17 +167,22 @@ New writes should use only `integrationConfigIds`.
 
 ## Implementation Notes
 
+- Keep this change small and simple. Reuse scheduled-job params, job executions, and
+  per-execution pending `files` rows before adding new tables, locks, grouping rules,
+  or broad refactors.
 - Prefer a small Dropbox params parser such as `parseDropboxJobParams(params)` that
-  returns one normalized shape:
+  validates the actual params shape:
 
   ```ts
   type DropboxJobParams = {
-    integrationConfigIds?: string[];
+    integrationConfigIds?: string[] | null;
   };
   ```
 
-- Treat missing, `null`, or empty `integrationConfigIds` as "all enabled Dropbox
-  configs" for backward compatibility.
+- Treat missing or `null` `integrationConfigIds` as "all enabled Dropbox configs" for
+  backward compatibility.
+- Do not treat `integrationConfigIds: []` as "all enabled Dropbox configs". Reject it
+  so clearing the multi-select cannot accidentally make a job run every Dropbox config.
 - Treat legacy `integration_config_id` as a one-item selection only when
   `integrationConfigIds` is absent.
 - Put tenant-safe config lookup and validation in a service layer rather than trusting
@@ -161,11 +192,12 @@ New writes should use only `integrationConfigIds`.
   do not use it as a validation rule.
 - Add optional sync input fields for the selected configs and scheduled execution
   metadata, for example `integrationConfigs`, `scheduledJobId`, and `jobExecutionId`.
-- When sync saves or requeues a file during a scheduled job execution, include metadata
-  that can be queried later:
+- When scheduled sync saves or requeues a file, create a new per-execution pending
+  `files` row and include metadata that can be queried later:
 
   ```ts
   {
+    toImport: true,
     source: 'dropbox',
     statusImport: 'pending',
     scheduledJobId,
@@ -174,8 +206,13 @@ New writes should use only `integrationConfigIds`.
   }
   ```
 
+- For content that already exists, prefer the existing `reprocessFileFromChecksum` and
+  `reprocessFile` pattern, which creates a new `files` row pointing at the same stored
+  file through `metadata.reprocessedFrom`.
 - `reprocessFileFromChecksum` and `reprocessFile` may need to accept extra metadata so
-  requeued files keep the same execution tag as newly saved files.
+  requeued files get the same execution tag as newly saved files.
+- Avoid adding a separate import queue table for this issue unless the existing
+  per-execution `files` row model cannot satisfy the acceptance criteria.
 - Add repository or service methods that can find pending files by tenant, provider,
   and `jobExecutionId`. Scheduled job imports should use that query. Provider-level
   manual imports should keep using the existing provider-wide pending-file query.
@@ -187,20 +224,26 @@ New writes should use only `integrationConfigIds`.
   The options should come from enabled Dropbox integration configs for the current
   tenant.
 - In `DropboxIntegrationView.vue`, remove the one-schedule guard and create new
-  Dropbox schedules with either the selected IDs from the UI or `{}` when the user
-  chooses the legacy all-configs behavior.
+  Dropbox schedules with either a non-empty selected ID list from the UI or `{}` /
+  `integrationConfigIds: null` when the user chooses the legacy all-configs behavior.
 
 ## Test Expectations
 
-- Add backend unit tests for the Dropbox params parser, including `{}`, empty array,
-  non-empty array, invalid non-array values, invalid non-string entries, and legacy
-  `integration_config_id`.
+- Add backend unit tests for the Dropbox params parser, including `{}`, `null`,
+  empty array rejection, non-empty array, invalid non-array values, invalid non-string
+  entries, and legacy `integration_config_id`.
 - Add backend service or route tests showing that selected config IDs are tenant
   isolated, provider validated, and enabled-state validated.
+- Add backend route tests showing that `integrationConfigIds: null` is accepted for
+  all-config mode and `integrationConfigIds: []` is rejected.
 - Add Dropbox sync tests showing that explicit config selections filter downloaded
   sources and still download a shared source only once within the same execution.
-- Add file import tests showing scheduled-job imports only read pending files tagged
-  with the current `jobExecutionId`.
+- Add Dropbox sync tests showing scheduled runs create per-execution pending `files`
+  rows with `scheduledJobId`, `jobExecutionId`, and `integrationConfigId`.
+- Add file import tests showing scheduled-job imports only read pending `files` rows
+  tagged with the current `jobExecutionId`.
+- Add overlap tests showing two executions for the same config or source keep separate
+  pending `files` rows and do not overwrite each other's execution tags.
 - Add job executor tests showing `jobExecutionId` is available to the Dropbox job
   script context.
 - Add regression tests showing manual provider-wide imports still import pending
@@ -216,13 +259,16 @@ New writes should use only `integrationConfigIds`.
 
 ## Risks
 
-- If queued files are not tagged consistently for both new saves and requeues, a
-  scheduled job could still import another job's pending work.
+- If scheduled sync mutates an existing original or shared file row instead of creating
+  a per-execution pending row, overlapping jobs could overwrite each other's execution
+  tags.
 - Legacy pending Dropbox files without `jobExecutionId` must remain importable through
   provider-level manual import actions, but must not be drained by a selected
   scheduled job.
 - Allowing the same config or Dropbox source in multiple jobs can cause duplicate work
   when schedules overlap. This is allowed by design for this issue.
+- Rejecting empty selected-config lists means the UI needs a clear all-config mode so
+  users do not confuse "no selected configs" with "all configs".
 - Existing UI text assumes one Dropbox schedule in a few places and may need copy
   updates in both English and Spanish locale files.
 
