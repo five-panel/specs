@@ -60,6 +60,12 @@ Dropbox should no longer expose a provider-wide manual import that imports every
 pending Dropbox file for the tenant. Dropbox import work should be tied to a
 scheduled job execution and its selected config set.
 
+Before removing the provider-wide Dropbox import path, deployment must handle
+legacy pending/importing Dropbox `files` rows that do not have `jobExecutionId`.
+Keep this simple: mark those old rows as failed with a clear reason so they are
+not stranded as pending work. New scheduled executions will create fresh
+per-execution rows.
+
 Selected config IDs must be resolved again at execution time. If a saved selected ID
 no longer resolves to an enabled Dropbox config for the same tenant, the job skips
 that ID and reports it in the execution summary. If every selected ID is skipped, the
@@ -121,6 +127,9 @@ New writes should use only `integrationConfigIds`.
   requeued by the same execution.
 - On failed or stale scheduled executions, mark that execution's pending/importing
   Dropbox `files` rows as failed.
+- Add a one-time migration or deploy cleanup that marks legacy pending/importing
+  Dropbox `files` rows without `jobExecutionId` as failed before the provider-wide
+  Dropbox import actions are removed.
 - Remove provider-wide Dropbox manual import actions, including "import" and
   "sync and import", from the integration settings UI/API. Dropbox imports should
   run through a scheduled job execution with an explicit job/config selection.
@@ -176,6 +185,9 @@ New writes should use only `integrationConfigIds`.
 - If a scheduled Dropbox execution fails after creating pending/importing file rows,
   those rows are marked failed for that `jobExecutionId` and are not later imported
   by another scheduled execution.
+- Existing legacy pending/importing Dropbox `files` rows without `jobExecutionId`
+  are marked failed by a one-time migration or deploy cleanup, with a clear reason
+  recorded in metadata.
 - If saved selected config IDs become stale, the execution skips and reports those
   IDs. If all selected IDs are stale, the execution does no Dropbox sync/import work
   and does not fall back to all enabled configs.
@@ -248,6 +260,10 @@ New writes should use only `integrationConfigIds`.
   the existing provider-wide pending-file query.
 - In the job failure path and stale-execution cleanup, update pending/importing
   Dropbox `files` rows for that `jobExecutionId` to failed with a short error reason.
+- Add a one-time cleanup for legacy Dropbox import rows where metadata has
+  `toImport: true`, `source: 'dropbox'`, `statusImport` of `pending` or
+  `importing`, and no `jobExecutionId`. Set their `statusImport` to `failed` and
+  record a short reason such as "replaced by scheduled Dropbox imports".
 - Pass `jobExecutionId` into the job script context from `JobExecutor` after the
   execution row is created. Keep the existing per-job running guard.
 - Update `frontend/src/services/FileService.ts` types so `ScheduledJob.params` can
@@ -279,6 +295,8 @@ New writes should use only `integrationConfigIds`.
   tagged with the current `jobExecutionId`.
 - Add failure cleanup tests showing failed or stale executions mark their own
   pending/importing Dropbox rows failed by `jobExecutionId`.
+- Add a migration or deploy-script test showing legacy pending/importing Dropbox
+  rows without `jobExecutionId` are marked failed and are no longer importable.
 - Add overlap tests showing two executions for the same config or source keep separate
   pending `files` rows and do not overwrite each other's execution tags.
 - Add job executor tests showing `jobExecutionId` is available to the Dropbox job
@@ -299,8 +317,9 @@ New writes should use only `integrationConfigIds`.
 - If scheduled sync mutates an existing original or shared file row instead of creating
   a per-execution pending row, overlapping jobs could overwrite each other's execution
   tags.
-- Legacy pending Dropbox files without `jobExecutionId` may need a one-time cleanup or
-  support path if operators relied on the old provider-wide manual import button.
+- The one-time legacy cleanup means old pending Dropbox rows without `jobExecutionId`
+  will not be imported automatically. Operators who still need that data should rerun
+  the relevant scheduled Dropbox job so fresh per-execution rows are created.
 - Allowing the same config or Dropbox source in multiple jobs can cause duplicate work
   when schedules overlap. This is allowed by design for this issue.
 - Rejecting empty selected-config lists means the UI needs a clear all-config mode so
