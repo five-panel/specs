@@ -66,6 +66,11 @@ Keep this simple: mark those old rows as failed with a clear reason so they are
 not stranded as pending work. New scheduled executions will create fresh
 per-execution rows.
 
+The cleanup must not run while old app nodes can still create or import untagged
+Dropbox rows. During deploy, stop or block the old provider-wide Dropbox import
+entry points first, then run the cleanup. For rolling deploys, run the cleanup
+after the last old node is gone, or run it again after rollout completes.
+
 Selected config IDs must be resolved again at execution time. If a saved selected ID
 no longer resolves to an enabled Dropbox config for the same tenant, the job skips
 that ID and reports it in the execution summary. If every selected ID is skipped, the
@@ -130,6 +135,9 @@ New writes should use only `integrationConfigIds`.
 - Add a one-time migration or deploy cleanup that marks legacy pending/importing
   Dropbox `files` rows without `jobExecutionId` as failed before the provider-wide
   Dropbox import actions are removed.
+- Ensure deployment order stops or blocks old provider-wide Dropbox import entry
+  points before that cleanup runs. In rolling deploys, the final cleanup must run
+  after all old nodes are gone, or run again after rollout completes.
 - Remove provider-wide Dropbox manual import actions, including "import" and
   "sync and import", from the integration settings UI/API. Dropbox imports should
   run through a scheduled job execution with an explicit job/config selection.
@@ -188,6 +196,8 @@ New writes should use only `integrationConfigIds`.
 - Existing legacy pending/importing Dropbox `files` rows without `jobExecutionId`
   are marked failed by a one-time migration or deploy cleanup, with a clear reason
   recorded in metadata.
+- The deploy plan prevents old provider-wide Dropbox import code from creating or
+  importing untagged Dropbox rows after the final cleanup starts.
 - If saved selected config IDs become stale, the execution skips and reports those
   IDs. If all selected IDs are stale, the execution does no Dropbox sync/import work
   and does not fall back to all enabled configs.
@@ -264,6 +274,10 @@ New writes should use only `integrationConfigIds`.
   `toImport: true`, `source: 'dropbox'`, `statusImport` of `pending` or
   `importing`, and no `jobExecutionId`. Set their `statusImport` to `failed` and
   record a short reason such as "replaced by scheduled Dropbox imports".
+- Pair the cleanup with a simple deployment step: disable or block legacy
+  provider-wide Dropbox import endpoints/workers before the final cleanup runs.
+  If the release uses rolling app nodes, run the cleanup only after all old nodes
+  are replaced, or run a second final cleanup after rollout.
 - Pass `jobExecutionId` into the job script context from `JobExecutor` after the
   execution row is created. Keep the existing per-job running guard.
 - Update `frontend/src/services/FileService.ts` types so `ScheduledJob.params` can
