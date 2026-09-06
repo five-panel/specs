@@ -81,14 +81,14 @@ The grouped and overall $/Jornada value is a weighted rate calculated from the g
 9. Missing numeric values do not cause a report error. Numeric totals treat missing inputs as zero, and a $/Jornada calculation with zero total Jornadas displays zero rather than raising a SQL error.
 10. With Año `2026`, Semana `22`, and Campo values `Santa Victoria` and `Pimiento`, the restored reference data returns 22 unique detail rows and these exact summary results:
 
-    | Labor | Jornadas | Monto Total | $/Jornada |
-    | --- | ---: | ---: | ---: |
-    | Cosecha | 38 | $1.444.000 | $38.000 |
-    | Desbrote | 14 | $589.740 | $42.124 |
-    | Amarre | 18 | $501.930 | $27.885 |
-    | Análisis campo | 11 | $352.000 | $32.000 |
-    | Aplicación | 10 | $320.000 | $32.000 |
-    | **TOTAL** | **91** | **$3.207.670** | **$35.249** |
+    | Labor | Sublabor | Contratista | Jornadas | Monto Total | $/Jornada |
+    | --- | --- | --- | ---: | ---: | ---: |
+    | Cosecha | Supervisión cosecha | Andrés Alejandro Cofre | 38 | $1.444.000 | $38.000 |
+    | Desbrote | Desbrote injerto | Andrés Alejandro Cofre | 14 | $589.740 | $42.124 |
+    | Amarre | Malla antihelada | Andrés Alejandro Cofre | 18 | $501.930 | $27.885 |
+    | Análisis Campo | Conteo de dardos | Andrés Alejandro Cofre | 11 | $352.000 | $32.000 |
+    | Aplicación | Apl. Mecánica servicio | Andrés Alejandro Cofre | 10 | $320.000 | $32.000 |
+    | **TOTAL** |  |  | **91** | **$3.207.670** | **$35.249** |
 
 11. The same reference selection returns these exact daily summaries:
 
