@@ -22,11 +22,11 @@ Tenant administrators need to create named form templates, control each template
 
 Tenant administrators can manage named, tenant-scoped form templates. Each template belongs to one model, applies to Create, Edit, or Both, and contains an ordered list of field rules. A field rule marks a field as editable, read-only, or hidden and may provide a create-time preset value.
 
-Template authoring stays deliberately simple in this version. Five Panel's existing `SmartJsonEditor` edits one versioned JSON object containing the template name, model, Create/Edit/Both applicability, and ordered field rules. The JSON editor provides syntax feedback, formatting, and fullscreen editing, while server validation reports invalid settings with their JSON paths. Assigned users stay outside the JSON and use a normal active-user picker so administrators do not need to find or type user IDs. There is no visual or field-by-field form builder.
+Template authoring stays deliberately simple in this version. Five Panel's existing `SmartJsonEditor` edits one versioned JSON object containing the template name, model, Create/Edit/Both applicability, and ordered field rules. The JSON editor provides syntax feedback, formatting, and fullscreen editing, while server validation reports invalid settings with their JSON paths. Editing the JSON after a server rejection clears that old error so the administrator can submit the corrected configuration. Assigned users stay outside the JSON and use a normal active-user picker so administrators do not need to find or type user IDs. There is no visual or field-by-field form builder.
 
 Administrators can assign each template to one or more active users in the same tenant. For the requested model and operation:
 
-- A user with no assigned applicable template receives an automatic all-fields form.
+- A user with no assigned applicable template receives an automatic full dialog containing all current model fields. In Edit mode, the dialog loads the complete current record by ID before opening.
 - A user with one assigned applicable template opens that form directly.
 - A user with more than one assigned applicable template chooses a template before the form opens.
 
@@ -47,11 +47,11 @@ Template rendering remains separate from record submission. Create and edit form
 - Add an administrator Form Templates settings page.
 - Reuse the existing `SmartJsonEditor` for administrators to enter the complete versioned template configuration: name, model, Create/Edit/Both use, ordered field rules, field modes, and create-time preset values.
 - Use a normal active-user picker for template assignments rather than placing user IDs in the JSON configuration.
-- Validate the complete JSON configuration, including its name, model, applicability, field references, and preset value types.
+- Validate the complete JSON configuration, including version `1`, its name, model, applicability, field references, preset value types, and required-field coverage for Create/Both templates.
 - Refactor the existing create-only model form into a reusable metadata-driven create and edit form.
 - Add the zero, one, and multiple-template resolution flows.
 - Add a row Edit action and remove double-click cell editing.
-- Fetch the complete set of record values required by the chosen edit template before displaying the form.
+- Make the edit dialog load the complete current values it will display, including all current model fields when no template applies, without changing the table's data query.
 - Preserve existing model field types, model defaults, required-field validation, relation options, select options, and conditional visibility behavior.
 - Add responsive phone, tablet, and desktop behavior to the user form, template chooser, and administrator template editor.
 - Add English and Spanish copy for all new labels, instructions, states, and errors.
@@ -69,17 +69,19 @@ Template rendering remains separate from record submission. Create and edit form
 - Formulas, scripts, or dynamic preset values based on the current user or record context.
 - Remembering or configuring a preferred template when a user has multiple applicable templates.
 - Public or unauthenticated data-entry forms.
+- Supporting configuration versions other than `1`, configuration migrations, or automatic version conversion.
+- Proactively revalidating or changing stored templates when model metadata later changes, including special recovery when every configured field becomes stale.
 
 ## Acceptance Criteria
 
-1. A tenant administrator can create a template by entering one JSON configuration with a non-empty name, a model in the current tenant, an applicability of Create, Edit, or Both, and at least one valid field rule.
+1. A tenant administrator can create a template by entering one JSON configuration with a non-empty name, a model in the current tenant, an applicability of Create, Edit, or Both, and at least one valid field rule. For a Create/Both template, each model field that can be required must be editable or receive a valid template preset or model default; otherwise, the template is rejected.
 2. A tenant administrator can edit and delete a template and can assign or unassign it to active users in the same tenant.
 3. A non-administrator cannot access template-management pages or successfully call template-management API operations.
 4. Template, model, and user-assignment reads and writes cannot cross tenant boundaries, including when identifiers from another tenant are submitted directly.
-5. A template configuration is one versioned JSON object containing its name, model ID, applicability, and ordered list of unique model field IDs. Each field rule supports editable, read-only, or hidden mode and an optional create-time preset value of a type accepted by that model field.
-6. The administrator create and edit screen uses the existing `SmartJsonEditor` for the complete template configuration and a normal active-user picker for assignments. User IDs are not part of the JSON. Save is unavailable while the JSON has a syntax error. A server validation error for a missing or invalid name, a model outside the current tenant, invalid applicability, duplicate field rules, fields outside the chosen model, invalid field modes, or invalid preset values is shown next to the JSON editor with the affected configuration path.
+5. A template configuration is one JSON object with a required `version` value of `1`, its name, model ID, applicability, and ordered list of unique model field IDs. The server rejects a missing version or any value other than `1`. Each field rule supports editable, read-only, or hidden mode and an optional create-time preset value of a type accepted by that model field.
+6. The administrator create and edit screen uses the existing `SmartJsonEditor` for the complete template configuration and a normal active-user picker for assignments. User IDs are not part of the JSON. Save is unavailable while the JSON has a syntax error or a validation request is pending. A server validation error for a missing or unsupported version, a missing or invalid name, a model outside the current tenant, invalid applicability, duplicate field rules, fields outside the chosen model, invalid field modes, invalid preset values, or missing required-field coverage is shown next to the JSON editor with the affected configuration path. Editing the JSON clears the previous server error and allows a new Save attempt once the JSON syntax is valid.
 7. When a model field referenced by an existing template no longer exists, the user form ignores that rule without crashing and the management screen shows which JSON configuration path needs attention.
-8. For Create or Edit, a user with no assigned applicable template opens an automatic fallback form containing all current model fields in model order.
+8. For Create or Edit, a user with no assigned applicable template opens an automatic full dialog containing all current model fields in model order. In Edit mode, all current values for those fields are loaded by record ID before the dialog opens.
 9. For Create or Edit, a user with exactly one assigned applicable template opens it without an extra selection step.
 10. For Create or Edit, a user with two or more assigned applicable templates can see their names, choose one, cancel, and open the chosen form.
 11. A template marked Both participates in both create and edit resolution; a Create-only or Edit-only template appears only for its matching operation.
@@ -87,7 +89,7 @@ Template rendering remains separate from record submission. Create and edit form
 13. On create, an editable field with a preset starts with that value and can be changed. A read-only or hidden field with a preset submits that value without offering an editable control. When no preset exists, the form displays a model default when one exists and otherwise leaves the value for existing backend default and validation behavior.
 14. On edit, editable and read-only fields start with the record's current values. Hidden fields are omitted from the update payload and remain unchanged. Create-time preset values do not overwrite an existing record.
 15. Existing model `visibleWhen` rules continue to apply. A field hidden by either the model condition or the template is hidden, and changing a controlling value updates dependent field visibility as it does today.
-16. Opening an edit form loads every record value needed by the chosen template even when those fields are absent from the table view's query or visible columns.
+16. Opening an edit dialog loads current values by record ID before displaying the form. With an applicable template, it loads every value needed by that template. With no applicable template, it loads values for every current model field. The edit dialog owns this load; the table's data query is unchanged.
 17. Successful create and edit submissions use the existing dynamic record mutations, refresh the displayed records, close the form, and show the existing translated success feedback.
 18. A failed record load does not open an empty form as if the record loaded successfully and offers a useful translated error or retry state. A failed save keeps the form open, preserves the user's entered values, and shows a useful translated error.
 19. Data cells no longer enter edit mode on double-click. Each non-placeholder record has an accessible Edit action, while the existing Delete action keeps its current behavior.
@@ -102,7 +104,7 @@ Template rendering remains separate from record submission. Create and edit form
 
 The recommended persistence shape is a `form_templates` record containing one versioned JSON configuration, plus a many-to-many user assignment record. Keep record identity, tenant ownership, audit columns, and timestamps outside the administrator-authored JSON. Follow the repository's existing UUID, tenant, foreign-key, and timestamp patterns where they apply. If the backend copies validated JSON values such as model ID or name into columns for indexing or referential integrity, those values must be derived from the JSON and updated atomically rather than becoming a second editable source. Deleting a model or template should remove dependent template or assignment rows through explicit service behavior or database cascades. Template names should be unique within a model and tenant.
 
-Reuse `frontend/src/components/json/SmartJsonEditor.vue` for the complete configuration instead of creating another JSON input or a visual form builder. A new template should start with a valid, formatted version-one example. The management page should provide enough model and field reference information for an administrator to enter valid IDs without guessing. Pass server-side schema errors through the editor's existing validation-error surface. Keep Save disabled for JSON syntax errors, pending validation, or server validation failures, while preserving the administrator's text so it can be corrected. Keep the active-user assignment control separate from the editor.
+Reuse `frontend/src/components/json/SmartJsonEditor.vue` for the complete configuration instead of creating another JSON input or a visual form builder. A new template should start with a valid, formatted version-one example. The management page should provide enough model and field reference information for an administrator to enter valid IDs without guessing. Pass server-side configuration errors through the editor's existing validation-error surface. Keep Save disabled while JSON syntax is invalid or a validation request is pending. After the server rejects syntactically valid JSON, preserve the administrator's text and show the path-based error; when the JSON changes, clear that stale server error and permit another Save attempt. Keep the active-user assignment control separate from the editor.
 
 A version-one configuration can use this conceptual shape:
 
@@ -130,11 +132,11 @@ Property absence must remain distinguishable from an explicit `null` preset. Fie
 
 The API should accept and return the complete configuration as one JSON object and provide operations for administrator CRUD, replacement of a template's assigned user list, and current-user lookup by `modelId` plus `create` or `edit` operation. Current-user lookup must derive the user and tenant from the authenticated request rather than accepting a target user ID. Management writes must verify that the model referenced by the configuration, the template, and the separately assigned active users belong to that tenant.
 
-Template validation should use current model metadata for field IDs, field types, select values, and relation shape. It should warn or reject configurations that obviously cannot satisfy an applicable required field through user input, a template preset, or a model default. The existing data service remains the final validator for record writes.
+Template validation runs when an administrator creates or updates a template and uses current model metadata for field IDs, field types, select values, and relation shape. It accepts only configuration version `1`; support for later versions is separate future work. It rejects a Create/Both configuration when a field that can be required cannot receive a user value, a valid template preset, or a model default. The existing data service remains the final validator for record writes. Automatically revalidating stored templates after later model changes is not part of this version.
 
 Reuse the current model field renderers and field-visibility helpers rather than building a second field-type system. The shared form should have explicit create and edit modes and a payload builder that includes editable values and applicable create presets while omitting edit-time hidden fields. On create, initialize fields from a template preset first and a model default second; keep an editable initialized value changeable, and submit a read-only or hidden initialized value without exposing an editable control. Model conditional visibility is an additional restriction and cannot make a template-hidden field visible.
 
-Do not build edit state from the displayed table row alone. Construct a focused query for the chosen template's editable and read-only fields, their visibility dependencies, and relation value/label fields, then load the record by ID before opening the edit form.
+The table's Edit action only starts the dialog and supplies the record ID; this issue does not change the table's data query. The edit dialog loads its own current values by record ID before opening. For a chosen template, request its editable and read-only fields, visibility dependencies, and relation value/label fields. For the automatic full dialog, request all current model fields and their dependencies.
 
 Use responsive CSS grid behavior with one, two, and three column limits at the specified widths. The DOM order must match template order instead of using visual-only reordering. On phones, prefer a near-full-screen dialog or equivalent contained page with a scrollable body and reachable actions.
 
@@ -143,11 +145,11 @@ Keep template selection, form rendering, payload construction, and record submis
 ## Test Expectations
 
 - Add migration tests for template and assignment tables, tenant-scoped uniqueness, foreign keys, and deletion behavior.
-- Add repository and service tests for administrator CRUD, active same-tenant assignments, current-user lookup, applicability filtering, stale field references, and template validation.
+- Add repository and service tests for administrator CRUD, active same-tenant assignments, current-user lookup, applicability filtering, stale field references, exact version-one validation, required-field coverage, and other template validation.
 - Add route tests proving administrator-only management, authenticated assigned-template reads, tenant isolation, and rejection of cross-tenant identifiers.
-- Add frontend unit tests for zero/one/multiple template resolution, Create/Edit/Both filtering, field ordering, field modes, preset handling, edit payload omission, and the generated fallback form.
+- Add frontend unit tests for zero/one/multiple template resolution, Create/Edit/Both filtering, field ordering, field modes, preset handling, edit payload omission, and the generated full fallback form, including its complete-record load in Edit mode.
 - Extend field-visibility tests to cover the intersection of model conditional visibility and template visibility.
-- Add component tests for the administrator management form, complete-configuration `SmartJsonEditor` integration, valid starter configuration, syntax and server validation errors, preserved invalid text, separate user assignment control, template chooser, create form, complete-record edit loading, success states, and recoverable errors.
+- Add component tests for the administrator management form, complete-configuration `SmartJsonEditor` integration, valid starter configuration, syntax and server validation errors, clearing a stale server error after the JSON changes, preserved invalid text, separate user assignment control, template chooser, create form, template and full-fallback record loading, success states, and recoverable errors.
 - Add regression coverage proving that double-click no longer edits a cell, the row Edit action uses the template flow, Delete is unchanged, and direct dynamic GraphQL mutations remain compatible.
 - Run the backend and frontend full test suites and builds, plus formatting or static checks available in each package.
 - Perform browser checks in English and Spanish at representative phone widths below 640 pixels, tablet widths from 640 through 1023 pixels, and desktop widths of at least 1024 pixels. Cover zero, one, and multiple assigned templates with keyboard and touch-style interaction.
