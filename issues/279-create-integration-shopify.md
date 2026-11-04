@@ -32,6 +32,8 @@ The shared design uses connections, external record IDs, field mappings, progres
 
 4. **Keep each field aligned with its main system.** The shared sync flow reads the current mappings and latest main-system values; the connector performs the permitted external changes. For example, changing a Five Panel-owned price from 20 to 25 updates Shopify to 25. If someone then changes Shopify to 15, the integration restores 25. Normal local record saving continues through the shared data services, with Shopify-specific rules kept in the connector.
 
+   When Five Panel controls stock, apply confirmed movements from Shopify sales, cancellations that release stock, and returns or refunds that restock units once in Five Panel before syncing quantities back. Include movements found by scheduled checks; repeated updates and historical orders already reflected in starting stock must not change stock again.
+
 5. **Handle store actions.** Use a common way to submit and track actions, with Shopify handlers for operations such as creating an order, shipping items, or issuing a refund. Check the configured inputs, defaults, and eligibility before execution. Save the request and its result so retries can follow the same operation. An uncertain result requires checking before another attempt. Ordinary field corrections do not submit business actions.
 
 6. **Show results and recover failures.** Reuse `backend/src/services/JobExecutionService.ts` for run summaries. Add reusable integration details tied to the connection, resource, record, and operation, including corrections, attempts, results, and readable errors. The Shopify History tab displays those details, including pending, failed, and uncertain work. Shared history handling stays independent of Shopify rules. Check existing integrations whenever shared registration, settings, or history behavior changes.
@@ -40,6 +42,7 @@ The shared design uses connections, external record IDs, field mappings, progres
 
 - Existing Shopify data imports before outgoing sync is activated.
 - Each mapped field follows its selected main system's latest value and corrects changes made in the other system.
+- With Five Panel controlling stock and both systems at 10 units, a Shopify sale of one unit leaves both at 9, even if its update arrives twice.
 - Configured store actions work; retries do not duplicate orders, payments, shipments, refunds, or stock changes.
 - History shows problems, interrupted work can resume, and existing integrations still work.
 
