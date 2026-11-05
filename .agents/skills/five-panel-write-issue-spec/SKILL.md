@@ -43,17 +43,13 @@ After the required checks and research, start the user conversation in this orde
 
 Keep the discussion focused on decisions that change the spec. Avoid posting to GitHub, committing, pushing, opening a PR, or changing labels during this stage.
 
-When the direction is clear, present the full plan for the spec:
+When the direction is clear, present the full plan using the same five sections as the spec:
 
-- proposed data/API/schema shape, if applicable
-- desired behavior
-- scope
-- out-of-scope items
-- acceptance criteria
-- implementation notes
-- test expectations
-- risks
-- open questions
+- `TL;DR`: the problem, the user outcome, and the recommended direction
+- `What will change`: new code, focused changes to existing code, reused code, and the expected code impact
+- `How it would work`: the ordered user and system flow, including data/API/schema, recovery behavior, risks, and test-relevant details when applicable
+- `Done when`: observable completion checks
+- `Out of scope`: explicit boundaries
 
 Ask for explicit approval before writing the spec file. Accept clear approvals such as "yes", "approved", "update the spec", or "write it".
 
@@ -72,36 +68,40 @@ Use this structure:
 
 Source issue: https://github.com/benitogonzalezh/five-panel/issues/<number>
 
-## Problem
+## TL;DR
 
-## Current Behavior
+## What will change
 
-## Desired Behavior
+**Code impact: <Small, Medium, or Large>.** <Brief reason.>
 
-## Scope
+## How it would work
 
-## Out Of Scope
+## Done when
 
-## Acceptance Criteria
-
-## Implementation Notes
-
-## Test Expectations
-
-## Risks
-
-## Open Questions
+## Out of scope
 ```
 
-Write concrete, testable acceptance criteria. Put `None` under Open Questions only when there are no blockers.
+Copy this structure exactly: keep the title, source line, five H2 sections in this order, and the bold `Code impact` paragraph under `What will change`. Do not omit or move the code-impact paragraph. Keep sections short when the issue is small instead of adding or removing sections. A domain-specific variant such as `How the integration would work` is allowed only when it makes the flow clearer and still follows the `How ... would work` pattern.
+
+Write each section for a human reviewer:
+
+- `TL;DR` explains the problem, why it matters, and the recommended result in plain language.
+- `What will change` clearly separates new code, focused existing-code changes, and reused code. Use the exact bold paragraph format `**Code impact: Small.** <Brief reason.>` (or `Medium` or `Large`).
+- `How it would work` uses an ordered flow when sequence matters. Include enough detail about behavior, data, APIs, schema, errors, recovery, risks, and tests for implementation, but do not prescribe hidden details that do not affect the result.
+- `Done when` contains concise, observable, testable completion checks.
+- `Out of scope` states clear boundaries. Write `None` only when there truly are no exclusions.
+
+Do not write a spec while important questions remain unresolved. Return to the discussion gate instead of adding an `Open Questions` section.
 
 ## Review Gate
 
 Run a self-review after writing and before publishing:
 - No placeholders such as TBD or TODO
-- Every acceptance criterion is observable
-- Scope and out-of-scope do not contradict each other
-- Implementation notes are guidance, not a mandated hidden implementation unless required by the issue
+- The spec has the title, source line, and exactly the five required H2 sections in the required order
+- `What will change` covers new, focused, and reused code and includes the required bold code-impact paragraph
+- `How it would work` is detailed enough to implement without mandating hidden details unless the issue requires them
+- Every `Done when` check is observable
+- `Done when` and `Out of scope` do not contradict each other
 
 Then summarize the local draft for the user and ask for explicit approval to publish. Do not commit, push, open a PR, comment on GitHub, or change labels until the user approves publishing.
 
