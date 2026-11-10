@@ -26,7 +26,17 @@ If any check fails, stop and report the reason in the conversation. Do not write
 
 ## Research
 
-Read the issue body and comments. Inspect `/root/git/five-panel` only enough to understand current behavior, relevant files, constraints, and test surface. Do not implement code.
+Read the issue body and comments. Before proposing or writing any spec, read the complete application source in `/root/git/five-panel`. This review is required for every issue, including small ones. Files named in the issue are a starting point, not the limit of the review. Do not implement code.
+
+Complete the code review before presenting a proposed solution:
+- Read `AGENTS.md`, `RULES.md`, and the applicable project docs. Review the frontend, backend, database, integrations, storage, ops, and tests to understand the whole application and how its parts connect.
+- Read complete source files and trace the affected behavior from its entry points through services, repositories, stored data, external systems, and the return or recovery path. Search results, filenames, and selected snippets do not replace reading the code.
+- Build an inventory of all data and behavior the issue must preserve or cover. Derive it from the current schema, migrations, services, repositories, and storage providers. Include configuration, permissions, history, background work, and files where they apply. Compare that inventory with what the current flow actually handles; an existing hardcoded list is not proof of completeness.
+- Follow dependencies and callers beyond the files named in the issue. Check existing services we can reuse, normal behavior, failures, recovery, company isolation, older-data compatibility, and the relevant tests.
+- Account for every item in the inventory: already handled, missing, deliberately excluded, or owned by a related issue. Work owned by another issue must still be considered when checking the complete user flow; link the dependency and explain what remains to be verified.
+- Keep evidence in working notes: real source paths, current behavior, gaps, and checks actually run. Clearly separate findings from reading code, behavior reproduced in a test, and assumptions that remain unverified. Never describe a partial review as a complete one.
+
+If code or context needed to complete the review is unavailable, explain the gap and resolve it before presenting the spec for writing approval. Keep the user-approved spec format short; thorough research does not require extra document sections.
 
 If the issue is complex, unfamiliar, architectural, or likely to affect future product direction, research how the problem is generally solved in industry before proposing a solution. Use primary/authoritative sources where possible, summarize the relevant patterns, and explain how they do or do not fit Five Panel.
 
@@ -34,7 +44,7 @@ If the issue is complex, unfamiliar, architectural, or likely to affect future p
 
 Do not write the spec file yet.
 
-After the required checks and research, start the user conversation in this order:
+After the required checks and complete code review, start the user conversation in this order:
 
 1. Explain the issue in simple words.
 2. Explain the best solution you currently recommend in simple words.
@@ -98,6 +108,8 @@ Write concrete, testable acceptance criteria. Put `None` under Open Questions on
 ## Review Gate
 
 Run a self-review after writing and before publishing:
+- The complete application code review was done before proposing the spec; the data and behavior inventory is supported by source evidence
+- Every inventory item is covered by observable completion checks or a clear boundary or linked dependency
 - No placeholders such as TBD or TODO
 - Every acceptance criterion is observable
 - Scope and out-of-scope do not contradict each other
