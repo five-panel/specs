@@ -9,6 +9,10 @@ description: Use when drafting, discussing, or publishing an implementation-read
 
 Use only for the selected issue passed by the launcher. Do not select a different issue.
 
+The launcher supplies the issue number and title, source and specs repositories, branch/worktree, and spec file path. It selects an issue labeled `ready for spec` and claims it with `spec WIP` before starting the agent. Verify that claim through the checks below.
+
+This document owns the research, discussion, format, approvals, review, and publishing instructions. The launcher prompt supplies task details and points here. This task writes the spec only; do not implement application code.
+
 Source repo: `benitogonzalezh/five-panel`
 Specs repo: `five-panel/specs`
 
@@ -53,21 +57,11 @@ After the required checks and complete code review, start the user conversation 
 
 Keep the discussion focused on decisions that change the spec. Avoid posting to GitHub, committing, pushing, opening a PR, or changing labels during this stage.
 
-When the direction is clear, present the full plan for the spec:
-
-- proposed data/API/schema shape, if applicable
-- desired behavior
-- scope
-- out-of-scope items
-- acceptance criteria
-- implementation notes
-- test expectations
-- risks
-- open questions
+When the direction is clear, present the proposed spec using the same short five-section format defined below. Follow the user's preferred review pace. Put essential decisions and constraints into those sections and keep detailed research in working notes.
 
 Ask for explicit approval before writing the spec file. Accept clear approvals such as "yes", "approved", "update the spec", or "write it".
 
-If requirements remain ambiguous or contradictory after discussion, report the blocking questions in the conversation and stop. Keep `spec WIP`; do not open a spec PR or change labels.
+If requirements remain ambiguous or contradictory after discussion, report the blocking questions in the conversation and stop. Resolve them before asking for writing approval; do not add an Open Questions section to the spec. Keep `spec WIP`; do not open a spec PR or change labels.
 
 ## Spec File
 
@@ -75,45 +69,45 @@ Only after the user approves the plan, create exactly one spec file in this repo
 
 `issues/<issue-number>-<slug>.md`
 
-Use this structure:
+Keep the issue title and source issue link at the top. Use exactly these five sections, in this order. For an integration, replace the third heading with `How the integration would work`; otherwise use `How it would work`.
 
 ```md
 # Issue #<number>: <title>
 
 Source issue: https://github.com/benitogonzalezh/five-panel/issues/<number>
 
-## Problem
+## TL;DR
+Explain what we will do in simple words. Keep code impact in the next section.
 
-## Current Behavior
+## What will change
+Explain what needs new code, what existing code needs focused changes, and which existing services we can reuse. Include a Small, Medium, or Large code-impact rating with a short reason.
 
-## Desired Behavior
+## How it would work
+Explain the flow in a short numbered list, referring to real files or services where useful. Separate existing code we reuse or extend from proposed new code. Keep shared capabilities generic and provider-specific rules in the connector where applicable. Add only the common capabilities this issue needs. Leave exact classes, routes, tables, and other detailed implementation choices to implementation planning unless they are necessary to explain the behavior.
 
-## Scope
+## Done when
+Use 3-6 short, observable checks that show the feature works, including important recovery or existing-feature checks where relevant.
 
-## Out Of Scope
-
-## Acceptance Criteria
-
-## Implementation Notes
-
-## Test Expectations
-
-## Risks
-
-## Open Questions
+## Out of scope
+Use a short list of clear boundaries. Include important first-version limits and work deliberately left for later.
 ```
 
-Write concrete, testable acceptance criteria. Put `None` under Open Questions only when there are no blockers.
+Use simple, common words and avoid repetition. Keep the whole spec under 1,000 words unless the user asks for more detail; small issues should be much shorter. Do the required research and self-review, but do not add separate long sections for research, risks, API/database designs, test plans, or repeated background. Put essential decisions and constraints into the five sections above.
 
 ## Review Gate
 
 Run a self-review after writing and before publishing:
+
 - The complete application code review was done before proposing the spec; the data and behavior inventory is supported by source evidence
 - Every inventory item is covered by observable completion checks or a clear boundary or linked dependency
+- The title and source issue link are at the top, followed by exactly the five required sections in order, with the correct third heading
+- `What will change` includes the code-impact rating and a short reason
+- `Done when` has 3-6 observable checks, including important recovery or existing-feature checks where relevant
+- The spec stays under 1,000 words unless the user asked for more detail, and has no unresolved requirements
 - No placeholders such as TBD or TODO
 - Every acceptance criterion is observable
 - Scope and out-of-scope do not contradict each other
-- Implementation notes are guidance, not a mandated hidden implementation unless required by the issue
+- Technical guidance leaves detailed implementation choices to planning unless they are required to explain the behavior
 
 Then summarize the local draft for the user and ask for explicit approval to publish. Do not commit, push, open a PR, comment on GitHub, or change labels until the user approves publishing.
 
