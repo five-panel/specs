@@ -10,7 +10,7 @@ Use shared connections and named actions for Shopify and other HTTP APIs. Users 
 
 First, import the store’s existing data. Then sync selected models, including new Shopify sales. Users choose which system controls each supported field; its latest value is automatically restored when the two differ.
 
-Provide five tabs: **Connection, Field mapping, Schedule, History, and Actions**, following the [approved prototype](https://five-pane-dev-server.tail7d89bf.ts.net/c/J88FjcHO5C/proto?frame=VUYT7ICyJS). [Saved screens](279-shopify-designs/README.md) and the [implementation plan](../docs/superpowers/plans/2026-11-11-shopify-integration.md) accompany this spec.
+Provide five tabs: **Connection, Field mapping, Schedule, History, and Actions**, following the [approved prototype](https://five-pane-dev-server.tail7d89bf.ts.net/c/J88FjcHO5C/proto?frame=VUYT7ICyJS). See the [saved screens](279-shopify-designs/README.md), [short implementation guide](279-create-integration-shopify-implementation.md), and [detailed technical plan](../docs/superpowers/plans/2026-11-11-shopify-integration.md).
 
 The first version supports one Shopify store per business, with multiple stock locations.
 

@@ -10,6 +10,8 @@
 
 **Spec:** [Issue #279](../../../issues/279-create-integration-shopify.md). **Designs:** [13 saved screens and prototype](../../../issues/279-shopify-designs/README.md).
 
+**Short implementation guide:** [Cómo lo implementaríamos](../../../issues/279-create-integration-shopify-implementation.md), a concise Spanish explanation of the pieces and flow.
+
 ## Global Constraints
 
 - The first version supports one Shopify store per business, with multiple stock locations.

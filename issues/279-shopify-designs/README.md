@@ -1,6 +1,6 @@
 # Shopify #279 designs
 
-These designs were recovered from Paseo agent `c69a9494-0dc7-4e52-92e5-fba3461aec79`, including its history and batch-import changes, then updated to show a separate run for each batch. They accompany the [spec](../279-create-integration-shopify.md) and the **[implementation Markdown](../../docs/superpowers/plans/2026-11-11-shopify-integration.md)**.
+These designs were recovered from Paseo agent `c69a9494-0dc7-4e52-92e5-fba3461aec79`, including its history and batch-import changes, then updated to show a separate run for each batch. They accompany the [spec](../279-create-integration-shopify.md), **[short implementation guide](../279-create-integration-shopify-implementation.md)**, and [detailed technical plan](../../docs/superpowers/plans/2026-11-11-shopify-integration.md).
 
 - [Interactive prototype](https://five-pane-dev-server.tail7d89bf.ts.net/c/J88FjcHO5C/proto?frame=VUYT7ICyJS)
 - [Doop canvas](https://five-pane-dev-server.tail7d89bf.ts.net/c/J88FjcHO5C?frame=VUYT7ICyJS), page `zp_Uo9vkUL`
