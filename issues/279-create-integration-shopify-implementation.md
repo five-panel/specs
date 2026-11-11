@@ -1,61 +1,156 @@
-# Shopify #279: cómo lo implementaríamos
+# Shopify #279: Implementation Guide
 
-Qué piezas construiremos, qué código actual cambia y cómo se conectará todo. Complementa la [spec](279-create-integration-shopify.md) y el [plan técnico detallado](../docs/superpowers/plans/2026-11-11-shopify-integration.md).
+How the pieces fit together, with concrete JSON formats to implement. Read alongside the [spec](279-create-integration-shopify.md), [designs](279-shopify-designs/README.md), and [detailed technical plan](../docs/superpowers/plans/2026-11-11-shopify-integration.md).
 
-## Qué aprovechamos y qué cambia
+## Reuse and focused changes
 
-La base será el sistema actual de automatizaciones y su cola de Graphile, que organiza trabajos en segundo plano. Reutilizaremos `DataService` para guardar registros, las credenciales protegidas y la programación de tareas.
+Reuse the automation runner, Graphile queue, scheduling, protected credentials, and `DataService` for business records.
 
-Haremos cambios concretos en estas partes:
-
-| Parte actual | Cambio necesario |
+| Existing part | Change |
 | --- | --- |
-| Configuración y credenciales | Ampliarlas para guardar conexiones y sus acciones, con credenciales propias por conexión. |
-| Automatizaciones | Agregar operaciones compartidas y permitir continuar una importación en otra ejecución de forma controlada. |
-| Guardado de registros | Proteger los campos elegidos para los IDs externos y permitir que la integración los complete. |
-| Historial y ajustes | Agregar la actividad de la conexión y las pantallas del diseño. |
+| Configuration and credentials | Support connections with their own credentials and saved actions. |
+| Automation engine | Add request, mapping, batch-save, and enqueue operations; allow controlled batch continuation. |
+| Record services | Protect the selected external-ID fields while allowing integration writes. |
+| History and settings | Add connection activity and the approved setup screens. |
 
-El impacto total es **grande**, principalmente por las funciones nuevas. Los cambios en servicios actuales serán puntuales y conservarán las integraciones existentes.
+**Code impact: Large**, mainly from new functionality. Keep existing-service changes focused and preserve current integrations.
 
-## Qué código agregamos
+## New pieces and stored data
 
-El código compartido manejará conexiones, solicitudes HTTP/GraphQL, mapeo, importación y sincronización. Cada acción guardada indicará a qué dirección llamar, qué enviar y cómo leer la respuesta. Agregar una acción no exigirá código nuevo.
+Shared code handles HTTP/GraphQL requests, field mapping, batch imports, and ownership rules. Shopify-specific code handles app authorization, signed notifications, and commerce rules. Users add saved request actions without registering new code.
 
-Las operaciones principales serán:
+Extend the existing configuration and credential models. Keep addresses, actions, mappings, ownership, and current progress together in JSON; keep credentials encrypted separately. External IDs live in the selected business-record fields. History reuses saved automation runs.
 
-| Operación | Qué hace |
-| --- | --- |
-| `integration.request` | Ejecuta una acción de la conexión usando sus credenciales. |
-| `data.map` | Transforma datos entre campos cuando hace falta un paso separado. |
-| `import.save_batch` | Guarda un lote y su avance. |
-| `automation.enqueue` | Pone otra ejecución en la cola con los parámetros recibidos. |
+Duplicate protection needs a stored business-operation identity, saved together with its applied change. The technical plan currently proposes an `operation_effects` table for that state. **A new table is an implementation choice, not a feature requirement.** Run history alone does not identify the same sale arriving through different events.
 
-Shopify tendrá código propio para autorizar la app, comprobar sus avisos y aplicar sus reglas de pedidos, pagos, envíos, devoluciones y stock. Usará las piezas compartidas para las solicitudes y el guardado.
+## Runtime flow
 
-## Dónde se guarda cada cosa
+1. Connect the current business, then select models, fields, locations, and each field's main system.
+2. Import Shopify's starting data through **read → save → enqueue**. Each batch has its own run; steps keep their own inputs, outputs, errors, and attempts. Safe retries preserve completed steps.
+3. Catch up changes received during import, review the result, then explicitly activate outgoing sync. Historical orders do not replay stock or money actions.
+4. Local changes, Shopify notifications, and scheduled checks start flows. Restore the selected main system's latest values. Apply sales/restocks once; when importing Shopify-owned stock, do not deduct the order again.
+5. Run confirmed commerce actions with saved results. Verify uncertain outcomes before another attempt. Pausing stops automatic outgoing sync; disconnecting blocks new requests.
 
-Ampliaremos los dos modelos actuales de configuración y credenciales. La configuración irá junta en JSON: dirección, acciones, mapeos, sistema principal por campo y avance. Las credenciales se guardarán cifradas aparte.
+## Concrete JSON example
 
-El ID de Shopify irá en el campo elegido del propio producto, pedido u otro registro. No crearemos una tabla de enlaces obligatoria.
+This example imports three products in batches of two. The IDs and product values are sample data; the JSON structures are the exact contracts to implement. The new operations are not implemented yet.
 
-Una tabla adicional recordará qué operaciones o movimientos ya se aplicaron. Esta información se consulta durante el procesamiento para evitar repetirlos. El historial reutilizará las ejecuciones guardadas.
+**Saved automation**, using the existing `POST /automations` body format. Its returned ID in this example is `22222222-2222-4222-8222-222222222222`:
 
-## Cómo se conecta todo
+```json
+{
+  "name": "Import Shopify products batch",
+  "enabled": true,
+  "definition": {
+    "trigger": { "eventType": "automation.manual" },
+    "steps": [
+      {
+        "name": "read_batch",
+        "operation": "integration.request",
+        "input": {
+          "connectionId": "11111111-1111-4111-8111-111111111111",
+          "action": "list_products",
+          "arguments": {
+            "cursor": "{{ event.data.cursor }}",
+            "limit": "{{ event.data.limit }}"
+          }
+        }
+      },
+      {
+        "name": "save_batch",
+        "operation": "import.save_batch",
+        "input": {
+          "importId": "{{ event.data.importId }}",
+          "resource": "products",
+          "batchNumber": "{{ event.data.batchNumber }}",
+          "cursor": "{{ event.data.cursor }}",
+          "batch": "{{ steps.read_batch.output.data }}"
+        },
+        "retry": {
+          "maxAttempts": 3,
+          "delaySeconds": 5,
+          "retryableErrors": ["temporary_database_error"]
+        }
+      },
+      {
+        "name": "queue_next_execution",
+        "operation": "automation.enqueue",
+        "input": {
+          "request": "{{ steps.save_batch.output.nextExecution }}"
+        }
+      }
+    ]
+  }
+}
+```
 
-1. **Conectar y configurar.** La autorización crea la conexión para la empresa actual. El usuario elige modelos, campos admitidos, ubicaciones y qué sistema manda. Cada solicitud comprueba que la conexión siga autorizada.
+**First run input:** the import service creates an event with this `data`, and groups its runs under `operationId = importId`:
 
-2. **Importar primero.** Shopify aporta los datos iniciales, incluso para campos que después controlará Five Panel. Cada lote ejecuta **leer → guardar → encolar**. El siguiente recibe la importación, dónde continuar y el tamaño/número de lote. Por ejemplo, 1.248 productos en grupos de 250 generan cinco ejecuciones bajo una sola importación.
+```json
+{
+  "importId": "33333333-3333-4333-8333-333333333333",
+  "cursor": null,
+  "limit": 2,
+  "batchNumber": 1
+}
+```
 
-3. **Guardar y continuar.** Los registros y su avance se guardan juntos; las llamadas a Shopify van aparte. Si falla guardar el lote 2, un reintento seguro conserva su ejecución y la lectura anterior. Si falla encolar, se reintenta ese paso sin guardar otra vez. El visor agrupa pasos por lote; cada paso tiene datos, errores e intentos.
+**`read_batch` output:** the saved `list_products` action converts Shopify's GraphQL response into this shared batch format:
 
-4. **Revisar y activar.** Incorporamos los cambios llegados durante la importación y mostramos datos, reglas, programación y acciones. Los pedidos históricos no repiten descuentos de stock ni pagos. La sincronización saliente comienza con la activación expresa y el stock inicial confirmado.
+```json
+{
+  "data": {
+    "items": [
+      { "id": "gid://shopify/Product/1001", "title": "Trail Jacket" },
+      { "id": "gid://shopify/Product/1002", "title": "Trail Bottle" }
+    ],
+    "nextCursor": "eyJsYXN0X2lkIjoxMDAyfQ==",
+    "hasMore": true,
+    "total": 3
+  }
+}
+```
 
-5. **Sincronizar.** Los avisos de Shopify, cambios locales y revisiones programadas inician automatizaciones. Un precio de 25 controlado por Five Panel se restaura a 25 si Shopify lo cambia a 15. Para stock, procesamos la venta una vez antes de corregir cantidades: ambos pasan de 10 a 9, incluso con avisos repetidos. Si Shopify controla la cantidad, la importamos sin descontar otra vez el pedido.
+**Written record values:** the saved mapping selects the Products model and maps `id → shopify_id`, `title → name`. `save_batch` receives the full `data` object above, then writes each product through `DataService`. The first product's values are:
 
-6. **Ejecutar acciones.** Pedidos, cobros, envíos, devoluciones y reembolsos usan opciones revisadas por el usuario. Guardamos sus resultados y comprobamos los inciertos antes de permitir otro intento. Pausar detiene la sincronización automática saliente; desconectar bloquea nuevas solicitudes.
+```json
+{
+  "shopify_id": "gid://shopify/Product/1001",
+  "name": "Trail Jacket"
+}
+```
 
-## En qué orden lo construiremos
+The chosen `shopify_id` field identifies an existing linked record on a later import; the integration updates that record instead of creating another one.
 
-Primero, conexiones y acciones compartidas; después, autorización e importación. Luego, sincronización y acciones de negocio. Las pantallas e historial se conectarán a esos servicios siguiendo el [diseño aprobado](279-shopify-designs/README.md).
+**`save_batch` output**, after both records and progress are committed:
 
-Comprobaremos que la importación continúe tras un fallo, que una venta descuente stock una vez y que un pago incierto no se repita. El plan técnico conserva los archivos, tareas y pruebas concretas.
+```json
+{
+  "saved": 2,
+  "processed": 2,
+  "nextExecution": {
+    "automationId": "22222222-2222-4222-8222-222222222222",
+    "data": {
+      "importId": "33333333-3333-4333-8333-333333333333",
+      "cursor": "eyJsYXN0X2lkIjoxMDAyfQ==",
+      "limit": 2,
+      "batchNumber": 2
+    }
+  }
+}
+```
+
+**`queue_next_execution` output:** its input `request` is exactly the `nextExecution` object above. It queues batch 2 as a new run of the same automation:
+
+```json
+{
+  "queued": true,
+  "eventId": "77777777-7777-4777-8777-777777777777"
+}
+```
+
+The next run receives the same import ID, the returned cursor, and batch number 2. It reads the remaining product. Later work can target another selected model or catch-up. When no follow-up remains, `nextExecution` is `null`; enqueue returns `{"queued": false, "eventId": null}`.
+
+## Delivery order
+
+Build shared connections/actions, Shopify authorization, and batch import first. Add live sync and commerce actions, then connect the screens and history. Verify recovery, duplicate stock notifications, and uncertain payments. The detailed plan holds the exact files and test tasks.

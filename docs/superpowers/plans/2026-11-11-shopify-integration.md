@@ -10,7 +10,7 @@
 
 **Spec:** [Issue #279](../../../issues/279-create-integration-shopify.md). **Designs:** [13 saved screens and prototype](../../../issues/279-shopify-designs/README.md).
 
-**Short implementation guide:** [Cómo lo implementaríamos](../../../issues/279-create-integration-shopify-implementation.md), a concise Spanish explanation of the pieces and flow.
+**Short implementation guide:** [Implementation Guide](../../../issues/279-create-integration-shopify-implementation.md), a concise explanation with complete automation, input/output, and written-record JSON examples. These examples define the planned contract; new operations still need implementation.
 
 ## Global Constraints
 
