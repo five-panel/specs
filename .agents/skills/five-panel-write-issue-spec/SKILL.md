@@ -9,7 +9,7 @@ description: Use when drafting, discussing, or publishing an implementation-read
 
 Use only for the selected issue passed by the launcher. Do not select a different issue.
 
-The launcher supplies the issue number and title, source and specs repositories, branch/worktree, and spec file path. It selects an issue labeled `ready for spec` and claims it with `spec WIP` before starting the agent. Verify that claim through the checks below.
+The launcher supplies the issue number and title, source and specs repositories, branch/worktree, and spec file path. It selects an issue labeled `ready to spec` and claims it with `spec WIP` before starting the agent. Verify that claim through the checks below.
 
 This document owns the research, discussion, format, approvals, review, and publishing instructions. The launcher prompt supplies task details and points here. Produce three planning documents in English: the spec, a technical implementation plan, and a short implementation guide. Do not implement application code.
 
@@ -20,7 +20,7 @@ Specs repo: `five-panel/specs`
 
 Before research, discussion, or writing, verify the source issue:
 - is open
-- has `ready for spec`
+- has `ready to spec`
 - has `spec WIP`
 - does not have `spec review`, `ready to dev`, or `WIP`
 - is not assigned to someone else
@@ -168,7 +168,7 @@ The source issue comment should include:
 - any non-blocking notes
 
 The source issue label update should:
-- remove `ready for spec`
+- remove `ready to spec`
 - remove `spec WIP`
 - add `spec review`
 
