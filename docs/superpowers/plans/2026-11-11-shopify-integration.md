@@ -67,6 +67,7 @@ Define shared types in proposed `backend/src/types/integration.ts`:
 - `SaveBatchResult`: `{ saved: number; processed: number; nextExecution: NextExecution }`.
 - `ImportReview`: import ID/phase, per-resource counts and sample-record links, ownership/schedule/action summaries, permission/baseline warnings, and `canActivate: boolean` with blocking reasons.
 - `ActivityPage`: `{ items: ActivitySummary[]; nextCursor: string | null }`; `ActivitySummary` contains operation ID, business kind/status/summary, progress, record/execution links, and allowed follow-up actions. Define these DTOs with the shared activity service in Task 9.
+- `ExecutionPage`: `{ items: ExecutionSummary[]; nextCursor: string | null }`; each summary contains the existing run ID, resource, batch number, status, time, and step statuses. Fetch that run's saved step inputs/outputs, attempt counts, and errors when expanded.
 
 IDs are real UUIDs in storage and API calls. `IMP-42`, `page-2`, 250, and 1,248 in the conversation are explanatory examples; provider cursors are opaque, and totals can be unknown.
 
@@ -137,7 +138,7 @@ The Shopify preset uses a pinned Admin GraphQL API version, initially `2026-10`.
 
 **Files:** create `backend/src/services/ConnectionImportService.ts`, `backend/src/services/RecordLinkService.ts`, `backend/src/services/automation/importSaveBatch.ts`, `backend/src/integrations/shopify/importDefinitions.ts`, and `backend/src/routes/connectionRoutes.ts`; modify configuration repository, automation service/handler map, `backend/src/services/DataService.ts`, `ModelService.ts`, `backend/src/types/schema.ts`, and `backend/src/index.ts`; test new `backend/test/integration/connectionImports.test.ts`.
 
-**Interfaces:** import service produces `start({ user, connectionId }): Promise<{ importId: string }>`, `saveBatch({ context, importId, resource, cursor, batch }): Promise<SaveBatchResult>`, and `review({ user, connectionId }): Promise<ImportReview>`. Link service produces `findOrSave({ user, mapping, remoteId, values, eventContext }): Promise<{ recordId: string; created: boolean }>` using `DataService`.
+**Interfaces:** import service produces `start({ user, connectionId }): Promise<{ importId: string }>`, `saveBatch({ context, importId, resource, batchNumber, cursor, batch }): Promise<SaveBatchResult>`, and `review({ user, connectionId }): Promise<ImportReview>`. Link service produces `findOrSave({ user, mapping, remoteId, values, eventContext }): Promise<{ recordId: string; created: boolean }>` using `DataService`.
 
 - [ ] Test incomplete mappings, duplicate IDs, interrupted save/enqueue, replayed cursor, unknown total, and a Shopify-owned starting value in a future Five Panel-owned field. Assert failed batches roll back records, progress, and events; completed batches remain after the next step fails.
 - [ ] Add authenticated `POST /connections/:id/imports` for **Save and import** and `GET /connections/:id/import-review`. Validate selected mappings, dependencies, locations, and permissions. Under the connection lock, repeated starts return the same active import. Freeze its mapping version; edits require new review, not checkpoint rewriting.
@@ -145,9 +146,10 @@ The Shopify preset uses a pinned Admin GraphQL API version, initially `2026-10`.
 - [ ] Establish each location's starting stock with a final inventory read after catch-up; save its observation/cutover and mark already represented movements without subtracting them again. New movement identity uses the movement's time/state, not the parent order's creation time. If a consistent baseline cannot be confirmed, retain pending stock and block outgoing quantity writes.
 - [ ] Save selected external IDs on business records for import/external creation, using compatible unique fields. Add generic `systemManaged?: boolean` field metadata and an internal `managedFieldWrites?: string[]` DataService option. Ordinary API/automation writes cannot change those IDs; only the validated link service supplies that option. Model edits preserve the managed flag. Test ordinary edit denial and authorized link writes. Do not assume the reserved `externalId` column supports arbitrary updates; conflicting links stop for explicit review, never fuzzy matching.
 - [ ] Lock the current import checkpoint, validate expected cursor, save records/events/progress and the runner's next **step** job in one transaction. `save_batch` returns `nextExecution`; it does not start the next batch. The checkpoint rejects stale replays and unchanged cursors. After the last resource, catch up and return `nextExecution: null`.
+- [ ] Each batch creates one run with the complete read/save/enqueue sequence. Save trusted resource/batch metadata; a retry keeps its run ID, completed read output, and step positions. Configure `save_batch` for three attempts with a five-second delay on normalized `temporary_database_error`. A safe manual retry uses the existing retry-wait path and cannot shorten its saved delay or increase its limit.
 - [ ] Run `npx tsx --test test/integration/connectionImports.test.ts` in `backend/` against a fresh disposable database. Assert five batch executions for the 1,248/250 fixture, cumulative counts `250, 500, 750, 1000, 1248`, and one stable `operationId = importId`. Commit.
 
-Each connection/resource receives a preset batch automation with a fixed action, preserving Task 4's snapshot rule. The initial event carries `importId`, `cursor: null`, and `limit`; each successor includes the opaque next cursor. The same import ID groups resources and catch-up work.
+Each connection/resource receives a preset batch automation with a fixed action, preserving Task 4's snapshot rule. The first event carries `importId`, `cursor: null`, `limit`, and `batchNumber: 1`; a successor increments its resource's batch number and includes the opaque cursor. A new resource starts at batch 1. The same import ID groups resources and catch-up work.
 
 ```json
 {
@@ -171,9 +173,11 @@ Each connection/resource receives a preset batch automation with a fixed action,
       "input": {
         "importId": "{{ event.data.importId }}",
         "resource": "products",
+        "batchNumber": "{{ event.data.batchNumber }}",
         "cursor": "{{ event.data.cursor }}",
         "batch": "{{ steps.read_batch.output.data }}"
-      }
+      },
+      "retry": { "maxAttempts": 3, "delaySeconds": 5, "retryableErrors": ["temporary_database_error"] }
     },
     {
       "name": "queue_next_execution",
@@ -224,11 +228,11 @@ Each connection/resource receives a preset batch automation with a fixed action,
 
 **Files:** create `backend/src/services/AutomationActivityService.ts`, `backend/src/repositories/AutomationActivityRepository.ts`, `backend/src/routes/automationActivityRoutes.ts`; extend trusted event metadata, automation service/repository, and run filtering; test new `backend/test/integration/automationActivity.test.ts`.
 
-**Interfaces:** `find({ user, connectionId?, operationId?, cursor? }): Promise<ActivityPage>` returns grouped activity and contextual record/action links. Extend trusted emit metadata with `{ connectionId, resource?, recordId?, action?, activityKind }`; the client cannot supply company or trusted source metadata. Activity IDs are operation IDs.
+**Interfaces:** `find({ user, connectionId?, operationId?, cursor? }): Promise<ActivityPage>` returns grouped activity and contextual record/action links. Add `findExecutions({ user, operationId, resource?, cursor? }): Promise<ExecutionPage>`. Extend trusted emit metadata with `{ connectionId, resource?, batchNumber?, recordId?, action?, activityKind }`; the client cannot supply company or trusted source metadata. Activity IDs are operation IDs; execution IDs are the existing run IDs.
 
-- [ ] Test one import activity across five runs, restarted batches, two companies, and more than 100 runs. Assert cumulative progress is not summed twice and all execution pages remain reachable; do not inherit the current unpaginated 100-run default.
+- [ ] Test one import activity across five runs, a retried batch, two companies, and more than 100 runs. Assert cumulative progress is not summed twice, retries do not create another run, and filtering/pagination reaches every run with all its steps. Do not inherit the current unpaginated 100-run default.
 - [ ] Query existing events/runs by trusted source and operation ID. Derive import totals from committed checkpoints/step outputs and preserve final summaries in those runs. No duplicate activity table or per-product import entries. Keep old activities after `currentImport` changes.
-- [ ] Add authenticated `GET /automation-activities` and paginated operation-run details. Project business labels/statuses and links through shared activity code; Shopify supplies action/result meanings. Keep scheduled-job summaries in existing `JobExecutionService.ts`.
+- [ ] Add authenticated `GET /automation-activities` and `GET /automation-activities/:operationId/runs?resource=&cursor=` for summaries ordered by `(createdAt, id)` in execution order. Reuse `GET /automation-runs/:id` for individual run details without changing legacy list responses. Keep each run's ordered `stepRuns` and saved logs separate; a model-wide summary is not a synthetic execution. Keep scheduled-job summaries in `JobExecutionService.ts`.
 - [ ] Return repair/check affordances according to real saved state. Price repair opens the variant; corrected source data starts a fresh safe sync intent and links back to the prior activity. Payment check uses Task 8; resolve/retry still enforce permissions and uncertainty.
 - [ ] Run `npx tsx --test test/integration/automationActivity.test.ts` in `backend/` with its disposable database. Expected: pass with stable grouping, pagination, and company isolation. Commit.
 
@@ -243,6 +247,8 @@ Each connection/resource receives a preset batch automation with a fixed action,
 - [ ] Add authenticated `POST /connections/:id/activate`, `POST /connections/:id/pause`, `POST /connections/:id/disconnect`, and `PUT /connections/:id/credentials` in `connectionRoutes.ts`; handlers call services. Activation rechecks catch-up, baseline, mapping, and permissions. Require current company-admin checks for setup/automation administration and service permissions for business records. Schedule changes reuse scheduled automation events; validate company/target, save settings and queued schedule changes together, and honor pause/disconnect when jobs fire.
 - [ ] Extend generic connection creation with base address and supported authentication. The Actions tab lists presets and lets an admin add/edit named actions, endpoint/method/headers/body, GraphQL document/variables, and output/error rules. Reuse the existing JSON editor components for structured fields. Secret fields are write-only credential inputs. Preserve existing file integration cards and screens.
 - [ ] Implement open order → cancel → review options → confirm → result, price repair → related variant → return, and payment check → verified result. Show business activity first and **View execution** for actual runs/batches/steps. Match existing theme tokens; translate visible copy, keep JSON names English, support keyboard/focus and 390 px layouts.
+- [ ] In `ExecutionDetails.vue`, render **activity → batch runs → steps**. Each expandable run is labeled by model and batch number; its read, save, and enqueue steps own their input/output/error and attempt display. Start with five run summaries per page, filter by model, and load full run detail when expanded. Keep catch-up as its own execution. Offer retry at the eligible step using `POST /automation-runs/:id/retry`; a failed/uncertain run without a scheduled safe retry cannot use that control.
+- [ ] Browser test: open Products batch 2, fail save after read succeeds, then retry safely. Assert the same run ID, read attempt count stays 1 with identical output, save attempt count becomes 2, and enqueue runs once. Batch 1 stays completed. Check the same hierarchy, keyboard expansion, filter, pagination, and no horizontal overflow at 1440 and 390 px.
 - [ ] Run `npm --prefix frontend test`, `npm --prefix frontend run build`, and the Shopify browser journey through Docker. Assert all thirteen saved screen states plus custom-action editing, reload persistence, and foreign-company denial. Commit.
 
 ## Task 11: Verify the complete flow and existing behavior
@@ -267,7 +273,7 @@ Each connection/resource receives a preset batch automation with a fixed action,
 | Commerce actions and uncertain outcomes | 2, 8 |
 | Activity, execution detail, and recovery | 9–11 |
 
-The [design index](../../../issues/279-shopify-designs/README.md) lists every frame and its required behavior. The design agent reported 29 mock interaction checks at each of 1440 and 390 px; this plan requires new application checks rather than treating those as backend evidence.
+The [design index](../../../issues/279-shopify-designs/README.md) lists every frame and its required behavior. The updated prototype passes 46 mock interaction checks at each of 1440 and 390 px, including the run/step hierarchy and same-run retry. This plan still requires application and provider checks; prototype results are not backend evidence.
 
 Primary references for implementation:
 

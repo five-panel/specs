@@ -42,7 +42,7 @@ Exact interfaces and file changes are in the implementation plan.
 
 5. **Execute actions.** Generic `integration.request` runs saved HTTP/GraphQL actions; `data.map` handles separate data transformations when needed. Users add actions without code registration. Keep Shopify installation, webhook verification, eligibility, and business effects in its connector. Cover order creation/cancellation, payments, shipping, returns, and refunds with explicit options and confirmation. Field corrections never repeat those actions. Keep external calls outside database transactions; freeze action definitions for retries, use stable identities, and pause uncertain outcomes for checking. Pause sync separately from disconnecting.
 
-6. **Show activity and recover.** Reuse saved automation data for a business activity view, filtered to this connection. One initial import remains one activity across batches. Offer record links, price repair, and payment verification. **View execution** opens the shared technical viewer with batches, inputs, outputs, attempts, and errors. Resume completed work safely; keep unknown outcomes paused.
+6. **Show activity and recover.** Reuse saved automation data for business activity, filtered to this connection. One import remains one activity. Offer record links, price repair, and payment verification. **View execution** lists runs by batch: expand each run to see its read, save, and enqueue steps, each with its own inputs, outputs, attempts, and errors. A safe retry resumes the failed step in the same run, preserving completed steps. Filter or page through runs; keep unknown outcomes paused.
 
 ## Done when
 
@@ -51,7 +51,7 @@ Exact interfaces and file changes are in the implementation plan.
 - Selected models pass mapping, resumable import, review, and explicit activation; tab changes preserve state and field ownership is enforced afterward.
 - With both stocks at 10, a Shopify sale leaves both at 9 even with duplicate notifications, reversed delivery order, or a later scheduled check.
 - Commerce actions and recovery avoid duplicate orders, payments, shipments, refunds, and stock effects; uncertain outcomes stay paused.
-- History groups import batches, links business records and recovery actions, and exposes execution details; existing integrations and unrelated automations still work.
+- History groups imports and links records/recovery; each batch run exposes its steps and safe retries preserve completed work. Existing integrations and unrelated automations still work.
 
 ## Out of scope
 
